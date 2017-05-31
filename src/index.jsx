@@ -21,7 +21,6 @@ const findBiclusters = (cols, data) => {
   }
   const biclusters = qbMining(graph, cols, rows, 0.8)
   biclusters.forEach((bicluster, i) => {
-    bicluster.index = i
     bicluster.cols = bicluster.source
     bicluster.rows = bicluster.target
     bicluster.colSet = new Set(bicluster.cols)
@@ -32,13 +31,30 @@ const findBiclusters = (cols, data) => {
   return biclusters
 }
 
+const sortByKey = (array, key) => {
+  const keys = new Map(array.map((v, i) => [v, key(v, i)]))
+  array.sort((a, b) => keys.get(b) - keys.get(a))
+}
+
 class App extends React.Component {
   constructor (props) {
     super(props)
     const {data} = props
-    const rows = data.map(({name}) => name)
-    const cols = Object.keys(data[0]).filter((col) => col !== 'name')
-    const biclusters = findBiclusters(cols, data)
+    const rows = data.map(({name}, index) => ({name, index}))
+    const cols = Object.keys(data[0]).filter((col) => col !== 'name').map((name, index) => ({name, index}))
+    const biclusters = findBiclusters(cols.map((col) => col.name), data)
+
+    const bcSize = (b) => b.source.length * b.target.length
+    biclusters.sort((b1, b2) => bcSize(b2) - bcSize(b1))
+    // sortByKey(rows, (row) => ((v) => v < 0 ? Infinity : v)(biclusters.findIndex((b) => b.rowSet.has(row.name))))
+    // sortByKey(cols, (col) => ((v) => v < 0 ? Infinity : v)(biclusters.findIndex((b) => b.colSet.has(col.name))))
+    sortByKey(rows, (row) => biclusters.filter((bicluster) => bicluster.rowSet.has(row.name)).length)
+    sortByKey(cols, (col) => biclusters.filter((bicluster) => bicluster.colSet.has(col.name)).length)
+    biclusters.reverse()
+    biclusters.forEach((bicluster, i) => {
+      bicluster.index = i
+    })
+
     this.state = {
       biclusters,
       rows,
@@ -61,15 +77,15 @@ class App extends React.Component {
       selectedRows,
       selectedCols
     } = this.state
-    const colIndex = new Map(filteredCols.map((col, i) => [col, i]))
-    const rowIndex = new Map(filteredRows.map((row, i) => [row, i]))
+    const colIndex = new Map(filteredCols.map((col, i) => [col.name, i]))
+    const rowIndex = new Map(filteredRows.map((row, i) => [row.name, i]))
     const svgMargin = 20
-    const scale = 0.5
+    const scale = 1
     const cellWidth = 20
     const cellHeight = 20
     const cellMargin = 2
-    const biclusterWidth = 40
-    const biclusterHeight = 40
+    const biclusterWidth = 20
+    const biclusterHeight = 20
     const rowMargin = 80
     const colMargin = 80
     const fillColor = 'black'
@@ -157,25 +173,25 @@ class App extends React.Component {
               {
                 filteredCols.map((col, i) => {
                   return <g key={i} transform={`translate(${i * cellWidth},-10)rotate(-90)`}>
-                    <text y='14' fill={selectedCols.has(col) ? selectedFillColor : fillColor}>{col}</text>
+                    <text y='14' fill={selectedCols.has(col.name) ? selectedFillColor : fillColor}>{col.name}</text>
                   </g>
                 })
               }
               {
                 filteredRows.map((row, i) => {
-                  const item = this.props.data.find(({name}) => row === name)
+                  const item = this.props.data.find(({name}) => row.name === name)
                   return <g key={i} transform={`translate(0,${i * cellHeight})`}>
-                    <text x='-10' y='14' textAnchor='end' fill={selectedRows.has(row) ? selectedFillColor : fillColor}>{row}</text>
+                    <text x='-10' y='14' textAnchor='end' fill={selectedRows.has(row.name) ? selectedFillColor : fillColor}>{row.name}</text>
                     <g>{
                       filteredCols.map((col, j) => {
-                        return +item[col] ? <rect
-                          key={col}
+                        return +item[col.name] ? <rect
+                          key={j}
                           transform={`translate(${j * cellWidth},0)`}
                           x={cellMargin}
                           y={cellMargin}
                           width={cellWidth - cellMargin * 2}
                           height={cellHeight - cellMargin * 2}
-                          fill={selectedCols.has(col) && selectedRows.has(row) ? selectedFillColor : fillColor}
+                          fill={selectedCols.has(col.name) && selectedRows.has(row.name) ? selectedFillColor : fillColor}
                           onClick={this.handleClickEdge.bind(this, row, col)}
                           onMouseOver={this.handleMouseOverEdge.bind(this, row, col)}
                           onMouseLeave={this.handleMouseLeaveEdge.bind(this)} /> : ''
@@ -192,23 +208,23 @@ class App extends React.Component {
   }
 
   handleClickEdge (row, col) {
-    const biclusters = this.state.biclusters.filter(({colSet, rowSet}) => colSet.has(col) && rowSet.has(row))
+    const biclusters = this.state.biclusters.filter(({colSet, rowSet}) => colSet.has(col.name) && rowSet.has(row.name))
     this.setState({
       filteredBiclusters: biclusters,
-      filteredRows: this.state.rows.filter((row) => biclusters.some(({rowSet}) => rowSet.has(row))),
-      filteredCols: this.state.cols.filter((col) => biclusters.some(({colSet}) => colSet.has(col)))
+      filteredRows: this.state.rows.filter((row) => biclusters.some(({rowSet}) => rowSet.has(row.name))),
+      filteredCols: this.state.cols.filter((col) => biclusters.some(({colSet}) => colSet.has(col.name)))
     })
     this.clearSelection()
   }
 
   handleMouseOverEdge (row, col) {
     const biclusterIndices = this.state.biclusters
-      .filter(({colSet, rowSet}) => colSet.has(col) && rowSet.has(row))
+      .filter(({colSet, rowSet}) => colSet.has(col.name) && rowSet.has(row.name))
       .map(({index}) => index)
     this.setState({
       selectedBiclusters: new Set(biclusterIndices),
-      selectedRows: new Set([row]),
-      selectedCols: new Set([col])
+      selectedRows: new Set([row.name]),
+      selectedCols: new Set([col.name])
     })
   }
 
@@ -220,8 +236,8 @@ class App extends React.Component {
     const {colSet, rowSet} = this.state.biclusters[index]
     this.setState({
       filteredBiclusters: this.state.biclusters.filter((b) => b.index === index),
-      filteredRows: this.state.rows.filter((row) => rowSet.has(row)),
-      filteredCols: this.state.cols.filter((col) => colSet.has(col))
+      filteredRows: this.state.rows.filter((row) => rowSet.has(row.name)),
+      filteredCols: this.state.cols.filter((col) => colSet.has(col.name))
     })
     this.clearSelection()
   }
