@@ -3,6 +3,7 @@ import {render} from 'react-dom'
 import * as d3 from 'd3'
 import Graph from 'egraph/graph'
 import qbMining from 'egraph/transformer/edge-concentration/quasi-biclique-mining'
+import {greedyOrder} from './greedy-order'
 
 const findBiclusters = (cols, data) => {
   const graph = new Graph()
@@ -21,19 +22,29 @@ const findBiclusters = (cols, data) => {
   }
   const biclusters = qbMining(graph, cols, rows, 0.8)
   biclusters.forEach((bicluster, i) => {
+    bicluster.id = i
     bicluster.cols = bicluster.source
     bicluster.rows = bicluster.target
     bicluster.colSet = new Set(bicluster.cols)
     bicluster.rowSet = new Set(bicluster.rows)
     bicluster.colWeight = new Map(bicluster.cols.map((col) => [col, graph.outVertices(col).filter((u) => bicluster.rowSet.has(u)).length / bicluster.rows.length]))
     bicluster.rowWeight = new Map(bicluster.rows.map((row) => [row, graph.inVertices(row).filter((v) => bicluster.colSet.has(v)).length / bicluster.cols.length]))
+    const edges = []
+    for (const u of bicluster.source) {
+      for (const v of bicluster.target) {
+        if (graph.edge(u, v)) {
+          edges.push([u, v])
+        }
+      }
+    }
+    bicluster.edges = edges
   })
   return biclusters
 }
 
 const sortByKey = (array, key) => {
   const keys = new Map(array.map((v, i) => [v, key(v, i)]))
-  array.sort((a, b) => keys.get(b) - keys.get(a))
+  array.sort((a, b) => keys.get(a) - keys.get(b))
 }
 
 class App extends React.Component {
@@ -44,12 +55,9 @@ class App extends React.Component {
     const cols = Object.keys(data[0]).filter((col) => col !== 'name').map((name, index) => ({name, index}))
     const biclusters = findBiclusters(cols.map((col) => col.name), data)
 
-    const bcSize = (b) => b.source.length * b.target.length
-    biclusters.sort((b1, b2) => bcSize(b2) - bcSize(b1))
-    // sortByKey(rows, (row) => ((v) => v < 0 ? Infinity : v)(biclusters.findIndex((b) => b.rowSet.has(row.name))))
-    // sortByKey(cols, (col) => ((v) => v < 0 ? Infinity : v)(biclusters.findIndex((b) => b.colSet.has(col.name))))
-    sortByKey(rows, (row) => biclusters.filter((bicluster) => bicluster.rowSet.has(row.name)).length)
-    sortByKey(cols, (col) => biclusters.filter((bicluster) => bicluster.colSet.has(col.name)).length)
+    greedyOrder(biclusters)
+    sortByKey(rows, (row) => ((v) => v < 0 ? Infinity : v)(biclusters.findIndex((b) => b.rowSet.has(row.name))))
+    sortByKey(cols, (col) => ((v) => v < 0 ? Infinity : v)(biclusters.findIndex((b) => b.colSet.has(col.name))))
     biclusters.reverse()
     biclusters.forEach((bicluster, i) => {
       bicluster.index = i
