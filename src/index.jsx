@@ -54,10 +54,13 @@ class App extends React.Component {
     const rows = data.map(({name}, index) => ({name, index}))
     const cols = Object.keys(data[0]).filter((col) => col !== 'name').map((name, index) => ({name, index}))
     const biclusters = findBiclusters(cols.map((col) => col.name), data)
-    const edges = new Set()
-    for (const b of biclusters) {
-      for (const [col, row] of b.edges) {
-        edges.add(`${row}:${col}`)
+    const edges = new Map()
+    for (const item of data) {
+      const row = item.name
+      for (const col of cols) {
+        if (+item[col.name]) {
+          edges.set(`${row}:${col.name}`, [row, col.name])
+        }
       }
     }
 
@@ -102,8 +105,8 @@ class App extends React.Component {
     const cellMargin = 2
     const biclusterWidth = 40
     const biclusterHeight = 40
-    const rowMargin = 80
-    const colMargin = 80
+    const rowMargin = 120
+    const colMargin = 200
     const fillColor = 'black'
     const selectedFillColor = 'red'
     const biclusterWidthScale = d3.scaleLinear()
@@ -112,6 +115,14 @@ class App extends React.Component {
     const biclusterHeightScale = d3.scaleLinear()
       .domain(d3.extent(filteredBiclusters, ({rows}) => rows.length))
       .range([biclusterHeight / 2, biclusterHeight])
+
+    const cellDensity = new Map()
+    for (const [key, [row, col]] of edges) {
+      cellDensity.set(key, filteredBiclusters.filter((b) => b.rowSet.has(row) && b.colSet.has(col)).length)
+    }
+    const cellOpacityScale = d3.scaleLinear()
+      .domain(d3.extent(Array.from(cellDensity.values())))
+      .range([0.3, 1])
     const biclusterX = filteredBiclusters.reduce((res, b) => {
       res.push(res[res.length - 1] + biclusterWidthScale(b.cols.length) + cellMargin * 2)
       return res
@@ -123,6 +134,11 @@ class App extends React.Component {
     const width = cellWidth * filteredCols.length + biclusterX[filteredBiclusters.length] + rowMargin + svgMargin * 2
     const height = cellHeight * filteredRows.length + biclusterY[filteredBiclusters.length] + colMargin + svgMargin * 2
     return <div>
+      <div>
+        <p>|U| = {filteredRows.length}</p>
+        <p>|V| = {filteredCols.length}</p>
+        <p>|K| = {filteredBiclusters.length}</p>
+      </div>
       <div>
         <button onClick={this.handleClickClearButton.bind(this)}>Clear</button>
       </div>
@@ -217,7 +233,8 @@ class App extends React.Component {
                     </text>
                     <g>{
                       filteredCols.map((col, j) => {
-                        return edges.has(`${row.name}:${col.name}`) ? <rect
+                        const key = `${row.name}:${col.name}`
+                        return edges.has(key) ? <rect
                           key={j}
                           transform={`translate(${j * cellWidth},0)`}
                           x={cellMargin}
@@ -225,6 +242,7 @@ class App extends React.Component {
                           width={cellWidth - cellMargin * 2}
                           height={cellHeight - cellMargin * 2}
                           fill={selectedCols.has(col.name) && selectedRows.has(row.name) ? selectedFillColor : fillColor}
+                          opacity={cellOpacityScale(cellDensity.get(key))}
                           onClick={this.handleClickEdge.bind(this, row, col)}
                           onMouseOver={this.handleMouseOverEdge.bind(this, row, col)}
                           onMouseLeave={this.handleMouseLeaveEdge.bind(this)} /> : ''
