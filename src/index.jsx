@@ -54,6 +54,12 @@ class App extends React.Component {
     const rows = data.map(({name}, index) => ({name, index}))
     const cols = Object.keys(data[0]).filter((col) => col !== 'name').map((name, index) => ({name, index}))
     const biclusters = findBiclusters(cols.map((col) => col.name), data)
+    const edges = new Set()
+    for (const b of biclusters) {
+      for (const [col, row] of b.edges) {
+        edges.add(`${row}:${col}`)
+      }
+    }
 
     greedyOrder(biclusters)
     sortByKey(rows, (row) => ((v) => v < 0 ? Infinity : v)(biclusters.findIndex((b) => b.rowSet.has(row.name))))
@@ -65,6 +71,7 @@ class App extends React.Component {
 
     this.state = {
       biclusters,
+      edges,
       rows,
       cols,
       selectedBiclusters: new Set(),
@@ -78,6 +85,7 @@ class App extends React.Component {
 
   render () {
     const {
+      edges,
       filteredBiclusters,
       filteredCols,
       filteredRows,
@@ -92,8 +100,8 @@ class App extends React.Component {
     const cellWidth = 20
     const cellHeight = 20
     const cellMargin = 2
-    const biclusterWidth = 20
-    const biclusterHeight = 20
+    const biclusterWidth = 40
+    const biclusterHeight = 40
     const rowMargin = 80
     const colMargin = 80
     const fillColor = 'black'
@@ -181,18 +189,35 @@ class App extends React.Component {
               {
                 filteredCols.map((col, i) => {
                   return <g key={i} transform={`translate(${i * cellWidth},-10)rotate(-90)`}>
-                    <text y='14' fill={selectedCols.has(col.name) ? selectedFillColor : fillColor}>{col.name}</text>
+                    <text
+                      y='14'
+                      fill={selectedCols.has(col.name) ? selectedFillColor : fillColor}
+                      onMouseOver={this.handleMouseOverColumn.bind(this, col)}
+                      onMouseLeave={this.handleMouseLeaveColumn.bind(this)}
+                      onClick={this.handleClickColumn.bind(this, col)}
+                    >
+                      {col.name}
+                    </text>
                   </g>
                 })
               }
               {
                 filteredRows.map((row, i) => {
-                  const item = this.props.data.find(({name}) => row.name === name)
                   return <g key={i} transform={`translate(0,${i * cellHeight})`}>
-                    <text x='-10' y='14' textAnchor='end' fill={selectedRows.has(row.name) ? selectedFillColor : fillColor}>{row.name}</text>
+                    <text
+                      x='-10'
+                      y='14'
+                      textAnchor='end'
+                      fill={selectedRows.has(row.name) ? selectedFillColor : fillColor}
+                      onMouseOver={this.handleMouseOverRow.bind(this, row)}
+                      onMouseLeave={this.handleMouseLeaveRow.bind(this)}
+                      onClick={this.handleClickRow.bind(this, row)}
+                    >
+                      {row.name}
+                    </text>
                     <g>{
                       filteredCols.map((col, j) => {
-                        return +item[col.name] ? <rect
+                        return edges.has(`${row.name}:${col.name}`) ? <rect
                           key={j}
                           transform={`translate(${j * cellWidth},0)`}
                           x={cellMargin}
@@ -216,7 +241,7 @@ class App extends React.Component {
   }
 
   handleClickEdge (row, col) {
-    const biclusters = this.state.biclusters.filter(({colSet, rowSet}) => colSet.has(col.name) && rowSet.has(row.name))
+    const biclusters = this.state.filteredBiclusters.filter(({colSet, rowSet}) => colSet.has(col.name) && rowSet.has(row.name))
     this.setState({
       filteredBiclusters: biclusters,
       filteredRows: this.state.rows.filter((row) => biclusters.some(({rowSet}) => rowSet.has(row.name))),
@@ -260,6 +285,90 @@ class App extends React.Component {
   }
 
   handleMouseLeaveBicluster () {
+    this.clearSelection()
+  }
+
+  handleMouseOverColumn (col) {
+    const {biclusters, edges} = this.state
+    const selectedBiclusters = biclusters.filter((b) => b.colSet.has(col.name))
+    const selectedRows = new Set()
+    for (const b of selectedBiclusters) {
+      for (const row of b.rows) {
+        if (edges.has(`${row}:${col.name}`)) {
+          selectedRows.add(row)
+        }
+      }
+    }
+    this.setState({
+      selectedBiclusters: new Set(selectedBiclusters.map((b) => b.index)),
+      selectedRows,
+      selectedCols: new Set([col.name])
+    })
+  }
+
+  handleMouseLeaveColumn () {
+    this.clearSelection()
+  }
+
+  handleClickColumn (col) {
+    const filteredBiclusters = this.state.filteredBiclusters.filter((b) => b.colSet.has(col.name))
+    const rowSet = new Set()
+    const colSet = new Set()
+    for (const b of filteredBiclusters) {
+      for (const row of b.rows) {
+        rowSet.add(row)
+      }
+      for (const col of b.cols) {
+        colSet.add(col)
+      }
+    }
+    this.setState({
+      filteredBiclusters: filteredBiclusters,
+      filteredRows: this.state.rows.filter((row) => rowSet.has(row.name)),
+      filteredCols: this.state.cols.filter((col) => colSet.has(col.name))
+    })
+    this.clearSelection()
+  }
+
+  handleMouseOverRow (row) {
+    const {biclusters, edges} = this.state
+    const selectedBiclusters = biclusters.filter((b) => b.rowSet.has(row.name))
+    const selectedCols = new Set()
+    for (const b of selectedBiclusters) {
+      for (const col of b.cols) {
+        if (edges.has(`${row.name}:${col}`)) {
+          selectedCols.add(col)
+        }
+      }
+    }
+    this.setState({
+      selectedBiclusters: new Set(selectedBiclusters.map((b) => b.index)),
+      selectedRows: new Set([row.name]),
+      selectedCols
+    })
+  }
+
+  handleMouseLeaveRow () {
+    this.clearSelection()
+  }
+
+  handleClickRow (row) {
+    const filteredBiclusters = this.state.filteredBiclusters.filter((b) => b.rowSet.has(row.name))
+    const rowSet = new Set()
+    const colSet = new Set()
+    for (const b of filteredBiclusters) {
+      for (const row of b.rows) {
+        rowSet.add(row)
+      }
+      for (const col of b.cols) {
+        colSet.add(col)
+      }
+    }
+    this.setState({
+      filteredBiclusters: filteredBiclusters,
+      filteredRows: this.state.rows.filter((row) => rowSet.has(row.name)),
+      filteredCols: this.state.cols.filter((col) => colSet.has(col.name))
+    })
     this.clearSelection()
   }
 

@@ -46,7 +46,6 @@ export const greedyOrder = (biclusters) => {
       }
       removeBicluster(count, bicluster)
     }
-    console.log(best)
     addBicluster(count, biclusters[selected])
     used[selected] = true
     order.set(biclusters[selected].id, i)
